@@ -2,8 +2,6 @@ name: Release Test
 
 on:
   push:
-    branches:
-      - '**-release'
   workflow_dispatch:
 
 permissions:
