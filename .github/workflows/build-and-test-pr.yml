@@ -1,6 +1,7 @@
 name: "Build and Test For PR"
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,10 +13,7 @@ env:
   #multi-version size limit
   VERSIONS_LIMIT: 4
   JACOCO_ENABLE: true
-  CANDIDATE_VERSIONS: '
-    spring.version:5.3.24;
-    spring-boot.version:2.7.6;
-    '
+  CANDIDATE_VERSIONS: ' spring.version:5.3.24; spring-boot.version:2.7.6; '
   MAVEN_OPTS: >-
     -XX:+UseG1GC
     -XX:InitiatingHeapOccupancyPercent=45
@@ -54,11 +52,11 @@ jobs:
           name: checkstyle-result
           path: mvn.log
       - name: "Generate Summary for successful run"
-        if: ${{ steps.check.outcome == 'success' }}
+        if: always()
         run: |
           echo ":ballot_box_with_check: Kudos! No formatting issues found!" >> $GITHUB_STEP_SUMMARY
       - name: "Generate Summary for failed run"
-        if: ${{ steps.check.outcome == 'failure' }}
+        if: always()
         run: |
           echo "## :negative_squared_cross_mark: Formatting issues found!" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -66,13 +64,15 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "Please run \`mvn spotless:apply\` to fix the formatting issues." >> $GITHUB_STEP_SUMMARY
       - name: "Fail if code needs formatting"
-        if: ${{ steps.check.outcome == 'failure' }}
+        if: always()
         uses: actions/github-script@v7.0.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             core.setFailed("Formatting issues found!")
 
+    strategy:
+      fail-fast: false
   license:
     name: "Check License"
     needs: check-format
@@ -99,6 +99,8 @@ jobs:
           config: .licenserc.yaml
           mode: check
 
+    strategy:
+      fail-fast: false
   build-source:
     name: "Build Dubbo"
     needs: check-format
@@ -123,7 +125,7 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}-${{ env.TODAY }}
       - name: "Restore common local maven repository cache"
         uses: actions/cache/restore@v4
-        if: steps.cache-maven-repository.outputs.cache-hit != 'true'
+        if: always()
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -143,7 +145,7 @@ jobs:
         run: rm -rf ~/.m2/repository/org/apache/dubbo
       - name: "Save local maven repository cache"
         uses: actions/cache/save@v4
-        if: steps.cache-maven-repository.outputs.cache-hit != 'true'
+        if: always()
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}-${{ env.TODAY }}
@@ -157,11 +159,11 @@ jobs:
           name: "class-file"
           path: ${{ github.workspace }}/class.zip
       - name: "Pack checkstyle file if failure"
-        if: failure()
+        if: always()
         run: zip ${{ github.workspace }}/checkstyle.zip *checkstyle* -r
       - name: "Upload checkstyle file if failure"
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: "checkstyle-file"
           path: ${{ github.workspace }}/checkstyle.zip
@@ -172,6 +174,8 @@ jobs:
           echo "version=$REVISION" >> $GITHUB_OUTPUT
           echo "dubbo version: $REVISION"
 
+    strategy:
+      fail-fast: false
   unit-test-prepare:
     name: "Preparation for Unit Test"
     needs: check-format
@@ -280,7 +284,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job_id: [1,2,3]
+        job_id: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -324,7 +328,8 @@ jobs:
       - name: "Run tests"
         run: cd test && bash ./run-tests.sh
       - name: "merge jacoco result"
-        run: cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java -Dexec.mainClass="org.apache.dubbo.test.JacocoMerge" -Dexec.args="${{github.workspace}}"
+        run: cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java 
+          -Dexec.mainClass="org.apache.dubbo.test.JacocoMerge" -Dexec.args="${{github.workspace}}"
       - name: "Upload jacoco"
         uses: actions/upload-artifact@v4
         with:
@@ -383,7 +388,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        job_id: [1,2,3]
+        job_id: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -427,7 +432,8 @@ jobs:
       - name: "Run tests"
         run: cd test && bash ./run-tests.sh
       - name: "merge jacoco result"
-        run: cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java -Dexec.mainClass="org.apache.dubbo.test.JacocoMerge" -Dexec.args="${{github.workspace}}"
+        run: cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java 
+          -Dexec.mainClass="org.apache.dubbo.test.JacocoMerge" -Dexec.args="${{github.workspace}}"
       - name: "Upload jacoco"
         uses: actions/upload-artifact@v4
         with:
@@ -503,6 +509,8 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+    strategy:
+      fail-fast: false
   integration-jacoco-result-merge:
     runs-on: ubuntu-latest
     needs: [check-format, integration-test-result, samples-test-result]
@@ -549,6 +557,8 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
 
+    strategy:
+      fail-fast: false
   error-code-inspecting:
     needs: check-format
     runs-on: ubuntu-latest
@@ -587,12 +597,14 @@ jobs:
           ../mvnw ${{ env.MAVEN_ARGS }} -T 2C package exec:java -Ddubbo.eci.report-as-error=${DUBBO_ECI_REPORT_AS_ERROR} -Dmaven.test.skip=true -Ddubbo.eci.path=${{ github.workspace }}/dubbo
       - name: "Upload error code inspection result"
         # always() should not be used here, since we don't need to handle the 'canceled' situation.
-        if: ${{ success() || failure() }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: "error-inspection-result"
           path: ${{ github.workspace }}/dubbo-test-tools/dubbo-error-code-inspector/error-inspection-result.txt
 
+    strategy:
+      fail-fast: false
   native-image-inspecting:
     needs: check-format
     runs-on: ubuntu-latest
@@ -650,3 +662,5 @@ jobs:
             --data '{"name":"Dubbo"}' \
             http://localhost:50052/org.apache.dubbo.nativeimage.DemoService/sayHello/
 
+    strategy:
+      fail-fast: false
