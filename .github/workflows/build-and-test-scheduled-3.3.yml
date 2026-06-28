@@ -1,3 +1,12 @@
+jobs:
+  samples-test-result:
+    steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+
+      - uses: actions/checkout@v3
+
 name: Build and Test Scheduled On 3.3
 
 on:

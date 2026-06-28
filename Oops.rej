@@ -1,0 +1,10 @@
+@@ -20,6 +20,8 @@
+ RESULT_FILE="jobs/merged-test-result-${JAVA_VERSION}.txt"
+ PATTERN="jobs/*result-${JAVA_VERSION}.txt"
+ 
+-cat ${PATTERN} > ${RESULT_FILE}
++mkdir -p jobs
++
++cat ${PATTERN} > ${RESULT_FILE} 2>/dev/null || touch ${RESULT_FILE}
+ 
+ if grep -q "FAILED" ${RESULT_FILE}; then

@@ -1,5 +1,12 @@
 name: "Build and Test For PR"
-
+  samples-test-result:
+    steps:
+      - name: Fail if code needs formatting
+        if: runner.os == 'Linux'
+        run: |
+          cat mvn.log | grep "ERROR" | sed 's/Check if code needs formatting    Check if code aligns with code style   [0-9A-Z:.-]\+//' | sed 's/\[ERROR] //' | head -n -11 >> $GITHUB_STEP_SUMMARY
+      - name: Generate Summary for failed run
+        if: runner.os == 'Linux'
 on:
   workflow_dispatch:
 
