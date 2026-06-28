@@ -53,10 +53,12 @@ jobs:
           path: mvn.log
       - name: "Generate Summary for successful run"
         if: always()
+        shell: bash
         run: |
           echo ":ballot_box_with_check: Kudos! No formatting issues found!" >> $GITHUB_STEP_SUMMARY
       - name: "Generate Summary for failed run"
         if: always()
+        shell: bash
         run: |
           echo "## :negative_squared_cross_mark: Formatting issues found!" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -176,6 +178,7 @@ jobs:
           path: ${{ github.workspace }}/checkstyle.zip
       - name: "Calculate Dubbo Version"
         id: dubbo-version
+        shell: bash
         run: |
           REVISION=`awk '/<revision>[^<]+<\/revision>/{gsub(/<revision>|<\/revision>/,"",$1);print $1;exit;}' ./pom.xml`
           echo "version=$REVISION" >> $GITHUB_OUTPUT
@@ -331,6 +334,7 @@ jobs:
           distribution: 'zulu'
           java-version: 8
       - name: "Init Candidate Versions"
+        shell: bash
         run: |
           DUBBO_VERSION="${{needs.build-source.outputs.version}}"
           CANDIDATE_VERSIONS="dubbo.version:$DUBBO_VERSION;compiler.version:$DUBBO_VERSION;$CANDIDATE_VERSIONS;dubbo.compiler.version:$DUBBO_VERSION"
@@ -436,6 +440,7 @@ jobs:
           distribution: 'zulu'
           java-version: 8
       - name: "Init Candidate Versions"
+        shell: bash
         run: |
           DUBBO_VERSION="${{needs.build-source.outputs.version}}"
           CANDIDATE_VERSIONS="dubbo.version:$DUBBO_VERSION;compiler.version:$DUBBO_VERSION;$CANDIDATE_VERSIONS;dubbo.compiler.version:$DUBBO_VERSION"
