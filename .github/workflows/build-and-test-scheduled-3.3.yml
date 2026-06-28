@@ -19,6 +19,9 @@ jobs:
   license:
     runs-on: ubuntu-latest
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           ref: "3.3"
@@ -31,6 +34,9 @@ jobs:
     outputs:
       version: ${{ steps.dubbo-version.outputs.version }}
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           ref: "3.3"
@@ -140,6 +146,9 @@ jobs:
     env:
       DISABLE_FILE_SYSTEM_TEST: true
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           ref: "3.3"
@@ -193,6 +202,9 @@ jobs:
       DUBBO_DEFAULT_SERIALIZATION: fastjson2
       MAVEN_SUREFIRE_ADD_OPENS: true
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
       - name: "Set up JDK ${{ matrix.jdk }}"
         uses: actions/setup-java@v3
@@ -254,6 +266,9 @@ jobs:
     env:
       JOB_COUNT: 5
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           repository: 'apache/dubbo-samples'
@@ -281,6 +296,9 @@ jobs:
         job_id: [1, 2, 3, 4, 5]
         os: *id001
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           repository: 'apache/dubbo-samples'
@@ -336,6 +354,9 @@ jobs:
       matrix:
         jdk: [8, 11, 17, 21]
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           repository: 'apache/dubbo-samples'
@@ -353,6 +374,9 @@ jobs:
     env:
       JOB_COUNT: 5
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           repository: 'apache/dubbo-integration-cases'
@@ -380,6 +404,9 @@ jobs:
         job_id: [1, 2, 3, 4, 5]
         os: *id001
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           repository: 'apache/dubbo-integration-cases'
@@ -435,6 +462,9 @@ jobs:
       matrix:
         jdk: [8, 11, 17, 21]
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           repository: 'apache/dubbo-integration-cases'
@@ -450,11 +480,17 @@ jobs:
   error-code-inspecting:
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           ref: "3.3"
           path: "./dubbo"
 
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           repository: 'apache/dubbo-test-tools'
@@ -493,6 +529,9 @@ jobs:
   native-image-inspecting:
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           ref: "3.3"
