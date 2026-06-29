@@ -57,20 +57,37 @@ jobs:
           cd ./dubbo
           ./mvnw --batch-mode --no-snapshot-updates -e --no-transfer-progress --fail-fast clean source:jar install -Pjacoco,checkstyle -Dmaven.wagon.httpconnectionManager.ttlSeconds=120 -Dmaven.wagon.http.retryHandler.count=5 -Dmaven.test.skip=true -Dmaven.test.skip.exec=true -DembeddedZookeeperPath=${{ github.workspace }}/.tmp/zookeeper
       - name: "Pack checkstyle file if failure"
-        if: always()
-        run: 7z a ${{ github.workspace }}/checkstyle.zip *checkstyle* -r
+        if: always() && runner.os != 'Windows'
+        run: find . -name '*checkstyle*' -print0 | xargs -0 zip -r ${{ github.workspace }}/checkstyle.zip || true
+      - name: "Pack checkstyle file if failure (Windows)"
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Recurse -Filter '*checkstyle*' -ErrorAction SilentlyContinue
+          if ($files) { 7z a "${{ github.workspace }}\checkstyle.zip" *checkstyle* -r }
       - name: "Upload checkstyle file if failure"
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: "checkstyle-file"
+          name: "checkstyle-file-${{ matrix.os }}"
           path: ${{ github.workspace }}/checkstyle.zip
       - name: "Calculate Dubbo Version"
         id: dubbo-version
+        if: runner.os != 'Windows'
         run: |
           REVISION=`awk '/<revision>[^<]+<\/revision>/{gsub(/<revision>|<\/revision>/,"",$1);print $1;exit;}' ./dubbo/pom.xml`
           echo "version=$REVISION" >> $GITHUB_OUTPUT
           echo "dubbo version: $REVISION"
+      - name: "Calculate Dubbo Version (Windows)"
+        id: dubbo-version-windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $content = Get-Content ./dubbo/pom.xml -Raw
+          $match = [regex]::Match($content, '<revision>([^<]+)</revision>')
+          $REVISION = $match.Groups[1].Value
+          "version=$REVISION" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "dubbo version: $REVISION"
 
     strategy:
       matrix:
@@ -279,7 +296,7 @@ jobs:
       matrix:
         jdk: [8, 11, 17, 21]
         job_id: [1, 2, 3, 4, 5]
-        os: *id001
+        os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -378,7 +395,7 @@ jobs:
       matrix:
         jdk: [8, 11, 17, 21]
         job_id: [1, 2, 3, 4, 5]
-        os: *id001
+        os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v3
         with:
@@ -450,6 +467,9 @@ jobs:
   error-code-inspecting:
     runs-on: ${{ matrix.os }}
     steps:
+      - name: "Enable long paths (Windows)"
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
       - uses: actions/checkout@v3
         with:
           ref: "3.3"
@@ -468,30 +488,46 @@ jobs:
           java-version: 21
 
       - name: "Compile Dubbo (Linux)"
+        if: runner.os != 'Windows'
         run: |
           cd ${{ github.workspace }}/dubbo
           ./mvnw --batch-mode --no-snapshot-updates -e --no-transfer-progress --fail-fast -T 2C clean install -DskipTests=true -DskipIntegrationTests=true -Dcheckstyle.skip=true -Dcheckstyle_unix.skip=true -Drat.skip=true -Dmaven.javadoc.skip=true
+      - name: "Compile Dubbo (Windows)"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd "${{ github.workspace }}\dubbo"
+          .\mvnw.cmd --batch-mode --no-snapshot-updates -e --no-transfer-progress --fail-fast -T 2C clean install -DskipTests=true -DskipIntegrationTests=true -Dcheckstyle.skip=true -Dcheckstyle_unix.skip=true -Drat.skip=true -Dmaven.javadoc.skip=true
       - name: "Run Error Code Inspecting"
         env:
           DUBBO_ECI_REPORT_AS_ERROR: true
+        if: runner.os != 'Windows'
         run: |
           cd ${{ github.workspace }}/dubbo-test-tools/dubbo-error-code-inspector
           ../mvnw --batch-mode --no-snapshot-updates -e --no-transfer-progress --fail-fast -T 2C package exec:java -Ddubbo.eci.report-as-error=${DUBBO_ECI_REPORT_AS_ERROR} -Dmaven.test.skip=true -Dmaven.test.skip.exec=true -Ddubbo.eci.path=${{ github.workspace }}/dubbo
+      - name: "Run Error Code Inspecting (Windows)"
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          DUBBO_ECI_REPORT_AS_ERROR: true
+        run: |
+          cd "${{ github.workspace }}\dubbo-test-tools\dubbo-error-code-inspector"
+          ..\mvnw.cmd --batch-mode --no-snapshot-updates -e --no-transfer-progress --fail-fast -T 2C package exec:java "-Ddubbo.eci.report-as-error=true" -Dmaven.test.skip=true -Dmaven.test.skip.exec=true "-Ddubbo.eci.path=${{ github.workspace }}\dubbo"
 
       - name: "Upload error code inspection result"
         # always() should not be used here, since we don't need to handle the 'canceled' situation.
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: "error-inspection-result"
+          name: "error-inspection-result-${{ matrix.os }}"
           path: ${{ github.workspace }}/dubbo-test-tools/dubbo-error-code-inspector/error-inspection-result.txt
 
     strategy:
       matrix:
-        os: *id001
+        os: [ubuntu-latest, windows-latest]
       fail-fast: false
   native-image-inspecting:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:
@@ -501,7 +537,7 @@ jobs:
       - name: "Setup GraalVM environment"
         uses: graalvm/setup-graalvm@v1
         with:
-          version: '22.3.0'
+          version: '22.3.3'
           java-version: '17'
           components: 'native-image'
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -509,7 +545,7 @@ jobs:
 
       - name: "Setup Zookeeper environment"
         run: |
-          wget https://dlcdn.apache.org/zookeeper/zookeeper-3.8.4/apache-zookeeper-3.8.4-bin.tar.gz
+          wget -q https://archive.apache.org/dist/zookeeper/zookeeper-3.8.4/apache-zookeeper-3.8.4-bin.tar.gz
           tar -zxvf apache-zookeeper-3.8.4-bin.tar.gz
           mv apache-zookeeper-3.8.4-bin/conf/zoo_sample.cfg apache-zookeeper-3.8.4-bin/conf/zoo.cfg
           apache-zookeeper-3.8.4-bin/bin/zkServer.sh start
@@ -537,5 +573,5 @@ jobs:
           ./target/dubbo-demo-native-consumer
     strategy:
       matrix:
-        os: *id001
+        os: [ubuntu-latest]
       fail-fast: false
