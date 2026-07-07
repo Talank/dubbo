@@ -1,6 +1,7 @@
 name: "Build and Test For PR"
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,10 +13,7 @@ env:
   #multi-version size limit
   VERSIONS_LIMIT: 4
   JACOCO_ENABLE: true
-  CANDIDATE_VERSIONS: '
-    spring.version:5.3.24,6.1.5;
-    spring-boot.version:2.7.6,3.2.3;
-    '
+  CANDIDATE_VERSIONS: ' spring.version:5.3.24,6.1.5; spring-boot.version:2.7.6,3.2.3; '
   MAVEN_OPTS: >-
     -XX:+UseG1GC
     -XX:InitiatingHeapOccupancyPercent=45
@@ -41,7 +39,7 @@ concurrency:
 jobs:
   check-format:
     name: "Check if code needs formatting"
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     steps:
       - name: "Checkout"
         uses: actions/checkout@v4
@@ -60,11 +58,11 @@ jobs:
           name: checkstyle-result
           path: mvn.log
       - name: "Generate Summary for successful run"
-        if: ${{ steps.check.outcome == 'success' }}
+        if: always()
         run: |
           echo ":ballot_box_with_check: Kudos! No formatting issues found!" >> $GITHUB_STEP_SUMMARY
       - name: "Generate Summary for failed run"
-        if: ${{ steps.check.outcome == 'failure' }}
+        if: always()
         run: |
           echo "## :negative_squared_cross_mark: Formatting issues found!" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -72,17 +70,23 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "Please run \`mvn spotless:apply\` to fix the formatting issues." >> $GITHUB_STEP_SUMMARY
       - name: "Fail if code needs formatting"
-        if: ${{ steps.check.outcome == 'failure' }}
+        if: always()
         uses: actions/github-script@v7.0.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             core.setFailed("Formatting issues found! \nRun \`mvn spotless:apply\` to fix.")
 
+    strategy:
+      matrix:
+        os: &id001
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+      fail-fast: false
   license:
     name: "Check License"
     needs: check-format
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: "Check License"
@@ -105,10 +109,14 @@ jobs:
           config: .licenserc.yaml
           mode: check
 
+    strategy:
+      matrix:
+        os: *id001
+      fail-fast: false
   build-source:
     name: "Build Dubbo"
     needs: check-format
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     outputs:
       version: ${{ steps.dubbo-version.outputs.version }}
     steps:
@@ -129,7 +137,7 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}-${{ env.TODAY }}
       - name: "Restore common local maven repository cache"
         uses: actions/cache/restore@v4
-        if: steps.cache-maven-repository.outputs.cache-hit != 'true'
+        if: always()
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -149,7 +157,7 @@ jobs:
         run: rm -rf ~/.m2/repository/org/apache/dubbo
       - name: "Save local maven repository cache"
         uses: actions/cache/save@v4
-        if: steps.cache-maven-repository.outputs.cache-hit != 'true'
+        if: always()
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}-${{ env.TODAY }}
@@ -163,11 +171,11 @@ jobs:
           name: "class-file"
           path: ${{ github.workspace }}/class.zip
       - name: "Pack checkstyle file if failure"
-        if: failure()
+        if: always()
         run: zip ${{ github.workspace }}/checkstyle.zip *checkstyle* -r
       - name: "Upload checkstyle file if failure"
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
           name: "checkstyle-file"
           path: ${{ github.workspace }}/checkstyle.zip
@@ -178,6 +186,10 @@ jobs:
           echo "version=$REVISION" >> $GITHUB_OUTPUT
           echo "dubbo version: $REVISION"
 
+    strategy:
+      matrix:
+        os: *id001
+      fail-fast: false
   unit-test-prepare:
     name: "Preparation for Unit Test"
     needs: check-format
@@ -214,18 +226,21 @@ jobs:
   unit-test:
     needs: [check-format, unit-test-prepare]
     name: "Unit Test On ubuntu-22.04 Java: ${{ matrix.java }}"
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        java: [ 8, 11, 17, 21, 25 ]
+        java: [8, 11, 17, 21, 25]
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
     env:
       DISABLE_FILE_SYSTEM_TEST: true
       CURRENT_ROLE: ${{ matrix.case-role }}
       ZOOKEEPER_VERSION: 3.7.2
     steps:
       - name: "Set MAVEN_OPTS for JDK 24+"
-        if: ${{ matrix.java >= 24 }}
+        if: always()
         run: echo "MAVEN_OPTS=--sun-misc-unsafe-memory-access=allow" >> $GITHUB_ENV
       - name: "Checkout code"
         uses: actions/checkout@v4
@@ -256,18 +271,18 @@ jobs:
             zookeeper-${{ runner.os }}-
       - name: "Test with maven on Java: 8"
         timeout-minutes: 90
-        if: ${{ matrix.java == '8' }}
+        if: always()
         run: |
           set -o pipefail
           ./mvnw ${{ env.MAVEN_ARGS }} clean test verify -Pjacoco,'!jdk15ge-add-open',skip-spotless -DtrimStackTrace=false -Dmaven.test.skip=false -Dcheckstyle.skip=false -Dcheckstyle_unix.skip=false -Drat.skip=false -DembeddedZookeeperPath=${{ github.workspace }}/.tmp/zookeeper 2>&1 | tee >(grep -n -B 1 -A 200 "FAILURE! -- in" > test_errors.log)
       - name: "Test with maven on Java: ${{ matrix.java }}"
         timeout-minutes: 90
-        if: ${{ matrix.java != '8' }}
+        if: always()
         run: |
           set -o pipefail
           ./mvnw ${{ env.MAVEN_ARGS }} clean test verify -Pjacoco,jdk15ge-simple,'!jdk15ge-add-open',skip-spotless -DtrimStackTrace=false -Dmaven.test.skip=false -Dcheckstyle.skip=false -Dcheckstyle_unix.skip=false -Drat.skip=false -DembeddedZookeeperPath=${{ github.workspace }}/.tmp/zookeeper 2>&1 | tee >(grep -n -B 1 -A 200 "FAILURE! -- in" > test_errors.log)
       - name: "Print test error log"
-        if: failure()
+        if: always()
         run: cat test_errors.log
       - name: "Upload coverage to Codecov"
         uses: codecov/codecov-action@v5
@@ -303,7 +318,7 @@ jobs:
   samples-test-job:
     needs: [check-format, build-source, samples-test-prepare]
     name: "Samples Test on ubuntu-22.04 (JobId: ${{matrix.job_id}} Java: ${{matrix.java}})"
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
       JAVA_VER: ${{matrix.java}}
@@ -311,8 +326,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: [ 8, 21 ]
-        job_id: [1,2,3]
+        java: [8, 21]
+        job_id: [1, 2, 3]
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
@@ -356,7 +374,8 @@ jobs:
       - name: "Run tests"
         run: cd test && bash ./run-tests.sh
       - name: "merge jacoco result"
-        run: cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java -Dexec.mainClass="org.apache.dubbo.test.JacocoMerge" -Dexec.args="${{github.workspace}}"
+        run: cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java 
+          -Dexec.mainClass="org.apache.dubbo.test.JacocoMerge" -Dexec.args="${{github.workspace}}"
       - name: "Upload jacoco"
         uses: actions/upload-artifact@v4
         with:
@@ -383,7 +402,7 @@ jobs:
       JAVA_VER: ${{matrix.java}}
     strategy:
       matrix:
-        java: [ 8, 21 ]
+        java: [8, 21]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -418,7 +437,7 @@ jobs:
   integration-test-job:
     needs: [check-format, build-source, integration-test-prepare]
     name: "Integration Test on ubuntu-22.04 (JobId: ${{matrix.job_id}} Java: ${{matrix.java}})"
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
       JAVA_VER: ${{matrix.java}}
@@ -426,8 +445,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java: [ 8, 21 ]
-        job_id: [1,2,3]
+        java: [8, 21]
+        job_id: [1, 2, 3]
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
         with:
@@ -471,7 +493,8 @@ jobs:
       - name: "Run tests"
         run: cd test && bash ./run-tests.sh
       - name: "merge jacoco result"
-        run: cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java -Dexec.mainClass="org.apache.dubbo.test.JacocoMerge" -Dexec.args="${{github.workspace}}"
+        run: cd test/dubbo-test-jacoco-merger && mvn clean compile exec:java 
+          -Dexec.mainClass="org.apache.dubbo.test.JacocoMerge" -Dexec.args="${{github.workspace}}"
       - name: "Upload jacoco"
         uses: actions/upload-artifact@v4
         with:
@@ -498,7 +521,7 @@ jobs:
       JAVA_VER: ${{matrix.java}}
     strategy:
       matrix:
-        java: [ 8, 21 ]
+        java: [8, 21]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -515,11 +538,15 @@ jobs:
 
   samples-jacoco-result-merge:
     name: "Samples Jacoco Result on ubuntu-22.04 (JobId: ${{matrix.job_id}} Java: ${{matrix.java}})"
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     needs: [check-format, samples-test-result]
     strategy:
       matrix:
-        java: [ 8, 21 ]
+        java: [8, 21]
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -565,11 +592,15 @@ jobs:
 
   integration-jacoco-result-merge:
     name: "Integration Jacoco Result on ubuntu-22.04 (JobId: ${{matrix.job_id}} Java: ${{matrix.java}})"
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     needs: [check-format, integration-test-result, samples-test-result]
     strategy:
       matrix:
-        java: [ 8, 21 ]
+        java: [8, 21]
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+      fail-fast: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -616,7 +647,7 @@ jobs:
 
   error-code-inspecting:
     needs: check-format
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -652,8 +683,12 @@ jobs:
           ../mvnw ${{ env.MAVEN_ARGS }} -T 2C package exec:java -Ddubbo.eci.report-as-error=${DUBBO_ECI_REPORT_AS_ERROR} -Dmaven.test.skip=true -Ddubbo.eci.path=${{ github.workspace }}/dubbo
       - name: "Upload error code inspection result"
         # always() should not be used here, since we don't need to handle the 'canceled' situation.
-        if: ${{ success() || failure() }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: "error-inspection-result"
           path: ${{ github.workspace }}/dubbo-test-tools/dubbo-error-code-inspector/error-inspection-result.txt
+    strategy:
+      matrix:
+        os: *id001
+      fail-fast: false
